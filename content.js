@@ -15,7 +15,6 @@ const LINES = [
 
 // ----------------------------------------------------------
 // THEMES — sets the station accent color
-// Keys: tag name. Values: CSS variable name.
 // ----------------------------------------------------------
 const THEMES = {
   micromobility:  "berkshires-green",
@@ -27,19 +26,20 @@ const THEMES = {
 
 // ----------------------------------------------------------
 // STOPS — in presentation order
-// type: "intro" | "outro" → shows body text (no four-point grid)
+// type: "intro"   → full-screen intro (no panel, no four-point grid)
+// type: "finale"  → full-screen thank-you close
 // type: undefined → regular four-point stop
 // ----------------------------------------------------------
 const STOPS = [
 
-  // ── COLD OPEN ─────────────────────────────────────────
+  // ── INTRO ─────────────────────────────────────────────
   {
-    id:    "cold-open",
+    id:    "first-day",
     type:  "intro",
     line:  "fellowship",
-    title: "Service launch, +2 hrs",
-    body:  "Arrived two hours late on the first day. A snowstorm had taken down most of the region's transit. The commute ended up taking as long as the onboarding.",
-    image: null,
+    title: "First day",
+    body:  "Arrived two hours late. A snowstorm had shut down most of the region's transit. Good framing, in hindsight.",
+    image: "images/porter-sq-snow.png",
   },
 
   // ── STOP 1 ────────────────────────────────────────────
@@ -51,7 +51,7 @@ const STOPS = [
     context:     "Arrived to a full micromobility docket. The Micromobility Commission had just released its final report.",
     objective:   "Get oriented, quickly.",
     how:         "Read everything — starting with the Commission report.",
-    result:      "Became the Lab's reference point on it. Most of what followed traced back to this.",
+    result:      "Became the Lab's reference point on it. Most of what followed traced back here.",
     resultLabel: "Result",
     image:       null,
   },
@@ -78,8 +78,8 @@ const STOPS = [
     title:       "Library transit screens",
     context:     "Transit info screens in public libraries. No clear owner, no clear process.",
     objective:   "Map them. Surface the accessibility question.",
-    how:         "Built an ArcGIS map. Hit unclear institutional pathways, kept at it.",
-    result:      "Months later, headed to an accessibility-team audit.",
+    how:         "Built an ArcGIS map. Ran into unclear institutional pathways, kept at it.",
+    result:      "Months later, it's headed to an accessibility-team audit.",
     resultLabel: "Result",
     image:       null,
   },
@@ -93,7 +93,7 @@ const STOPS = [
     context:     "The Commission report needed to exist as a physical document.",
     objective:   "Find who could print it.",
     how:         "Researched and contacted COMMBUYS vendors.",
-    result:      "First contact with state procurement.",
+    result:      "First encounter with state procurement.",
     resultLabel: "Insight",
     image:       null,
   },
@@ -134,7 +134,7 @@ const STOPS = [
     title:       "Micromobility 101 webinar",
     context:     "The campaign needed something durable behind it.",
     objective:   "A resource that holds past the campaign cycle.",
-    how:         "Recorded a 101 webinar.",
+    how:         "Recorded a Micromobility 101 webinar.",
     result:      "Standing reference material, independent of the campaign.",
     resultLabel: "Result",
     image:       null,
@@ -166,7 +166,7 @@ const STOPS = [
     result:      "The Lab's main fellowship deliverable. Internal review surfaced process questions that hadn't been asked before.",
     resultLabel: "Result",
     image:       null,
-    // [TODO: confirm this is the peak stop]
+    // [TODO: confirm this is the peak stop — if not, update this comment]
   },
 
   // ── STOP 10 ───────────────────────────────────────────
@@ -178,7 +178,7 @@ const STOPS = [
     context:     "Statewide Micro ID policy development needed grounding in how other places handle it.",
     objective:   "Learn from international precedent.",
     how:         "Researched regulatory frameworks across jurisdictions.",
-    result:      "Analysis now feeding active Micro ID policy work.",
+    result:      "Analysis feeding active Micro ID policy work.",
     resultLabel: "Result",
     image:       null,
   },
@@ -219,7 +219,7 @@ const STOPS = [
     title:       "AV planning support",
     context:     "MassDOT's AV testing pathway wasn't visible internally.",
     objective:   "Make it legible, and easier to improve.",
-    how:         "Process-mapped the existing pathway, presented to the team, built a Smartsheet application mockup.",
+    how:         "Process-mapped the pathway, presented to the team, built a Smartsheet application mockup.",
     result:      "The team could see the full pathway clearly for the first time.",
     resultLabel: "Result",
     image:       null,
@@ -245,10 +245,10 @@ const STOPS = [
     line:        "fellowship",
     theme:       "research",
     title:       "ISA next steps",
-    context:     "Pravaar, a previous fellow, ran a thorough ISA experiment. The question was what scaling it would actually take.",
+    context:     "Pravaar, a previous fellow, ran a thorough ISA experiment. The question was what scaling it would actually require.",
     objective:   "Scope the next chapter.",
-    how:         "Built on that research — identified the data layers, coordination, and resources the next phase needs.",
-    result:      "The experiment becomes a roadmap. Pass it on.",
+    how:         "Built on that work — identified the data layers, coordination, and resources the next phase needs.",
+    result:      "The experiment becomes a roadmap.",
     resultLabel: "Insight",
     image:       null,
   },
@@ -272,22 +272,32 @@ const STOPS = [
     id:          "bikeshare-walkshed",
     line:        "fellowship",
     theme:       "data_spatial",
-    title:       "Bikeshare 10-minute walkshed",
-    context:     "Five bikeshare operators in Massachusetts. Five inconsistent datasets.",
-    objective:   "A single clean picture of who can actually reach a station.",
+    title:       "Bikeshare 10-min walkshed",
+    context:     "Five bikeshare operators. Five inconsistent datasets.",
+    objective:   "One clean picture of who can reach a station.",
     how:         "Unified and cleaned all five datasets. Spatialized a 10-minute walkshed against population density and demographics.",
     result:      "A reusable spatial asset, handed off to Kris and Jaclyn.",
     resultLabel: "Result",
-    image:       null,
+    image:       "images/bikeshare.jpg",   // swap path when ready
   },
 
   // ── CLOSER ────────────────────────────────────────────
   {
     id:    "closer",
-    type:  "outro",
+    type:  "intro",            // reuses intro layout: full-width body text
     line:  "fellowship",
     title: "End of the line",
-    body:  "I spent the last stretch mapping the Lab — three years of projects and the people who worked on them. Somewhere in that process, I found myself on the map too. The line keeps running.",
+    body:  "I spent the last stretch mapping the Lab — three years of projects and the people who worked on them. The network grew by nineteen this spring. The line keeps running.",
+    image: null,
+  },
+
+  // ── FINALE ────────────────────────────────────────────
+  {
+    id:    "finale",
+    type:  "finale",
+    line:  "fellowship",
+    title: "Thank you.",
+    body:  "Nineteen projects. Most came down to some version of the same question: where is the gap, and what would it take to close it? The answers varied — a scraper, an app, a grant, a spatial dataset, a policy memo, a network map. The question didn't.\n\nTransportation. City planning. Public sector. That's where it goes next.",
     image: null,
   },
 
@@ -295,7 +305,6 @@ const STOPS = [
 
 // ----------------------------------------------------------
 // PEOPLE — Duckling Line crossings (populate later)
-// Each entry marks where someone intersected the Fellowship Line.
 // ----------------------------------------------------------
 const PEOPLE = [
   // { name: "Kris Carter",  atStop: "bikeshare-walkshed" },

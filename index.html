@@ -6,12 +6,16 @@
   <title>Mind the Gap — Fellowship Line</title>
   <link rel="stylesheet" href="style.css" />
 </head>
-<body data-state="map" data-started="false">
+<body data-state="title">
 
   <!-- ── Map layer — always rendered ── -->
   <div id="map-layer">
     <svg id="transit-svg" aria-label="Fellowship Line transit map" xmlns="http://www.w3.org/2000/svg">
+      <defs id="svg-defs">
+        <!-- Branch-line gradients injected by JS -->
+      </defs>
       <g id="pan-group">
+        <!-- Branch lines injected by JS (behind tracks) -->
         <path id="path-dim" class="track track-dim" />
         <path id="path-lit" class="track track-lit" />
         <g id="stations-group"></g>
@@ -19,37 +23,60 @@
     </svg>
   </div>
 
-  <!-- ── Title screen overlay ── -->
+  <!-- ── Title / intro screen ── -->
   <div id="title-screen" aria-hidden="true">
+    <!-- Illustration -->
+    <img id="ouss-img" src="images/ouss.png" alt="" aria-hidden="true" />
+
+    <!-- Title content -->
     <div class="title-inner">
       <div class="title-tag">Fellowship Line · Spring 2026</div>
       <h1 class="wordmark">Mind the <span class="gap">Gap</span></h1>
       <p class="title-sub">Oussama Ouadani &nbsp;·&nbsp; The Lab @ MassDOT</p>
     </div>
-    <!-- Decorative transit lines on title screen -->
+
+    <!-- Decorative transit lines -->
     <svg class="title-deco-lines" aria-hidden="true">
-      <line class="deco-fellowship" x1="0" y1="70%" x2="100%" y2="70%" />
-      <circle class="deco-station fellowship" cx="20%" cy="70%" r="8" />
-      <circle class="deco-station fellowship" cx="50%" cy="70%" r="8" />
-      <circle class="deco-station fellowship" cx="80%" cy="70%" r="8" />
-      <line class="deco-duckling" x1="0" y1="80%" x2="100%" y2="80%" />
-      <circle class="deco-station duckling" cx="35%" cy="80%" r="8" />
-      <circle class="deco-station duckling" cx="65%" cy="80%" r="8" />
+      <line class="deco-fellowship" x1="-5%" y1="72%" x2="105%" y2="72%" />
+      <circle class="deco-station fellowship" cx="18%" cy="72%" r="8" />
+      <circle class="deco-station fellowship" cx="45%" cy="72%" r="8" />
+      <circle class="deco-station fellowship" cx="72%" cy="72%" r="8" />
+      <line class="deco-duckling"    x1="-5%" y1="82%" x2="105%" y2="82%" />
+      <circle class="deco-station duckling"   cx="30%" cy="82%" r="6" />
+      <circle class="deco-station duckling"   cx="60%" cy="82%" r="6" />
+    </svg>
+  </div>
+
+  <!-- ── Finale screen ── -->
+  <div id="finale-screen" aria-hidden="true">
+    <img class="finale-img" src="images/ouss.png" alt="" aria-hidden="true" />
+    <div class="finale-inner">
+      <h2 class="finale-heading">Thank you.</h2>
+      <p  class="finale-body" id="finale-body-text"></p>
+      <p  class="finale-meta">Spring 2026 · The Lab @ MassDOT</p>
+    </div>
+    <svg class="title-deco-lines" aria-hidden="true">
+      <line class="deco-fellowship" x1="-5%" y1="72%" x2="105%" y2="72%" />
+      <circle class="deco-station fellowship" cx="18%" cy="72%" r="8" />
+      <circle class="deco-station fellowship" cx="45%" cy="72%" r="8" />
+      <circle class="deco-station fellowship" cx="72%" cy="72%" r="8" />
     </svg>
   </div>
 
   <!-- ── Stop panel (left side card) ── -->
   <aside id="stop-panel" aria-live="polite">
-
     <div id="panel-scroll">
 
-      <!-- Intro / outro (type: "intro" | "outro") -->
+      <!-- Intro / outro body -->
       <div id="panel-intro" class="hidden">
         <div class="panel-tag-row">
           <span class="panel-line-tag">Fellowship Line</span>
         </div>
         <h2 id="intro-title" class="panel-title"></h2>
         <p  id="intro-body"  class="intro-body"></p>
+        <div id="intro-img-wrap" class="panel-img-wrap hidden">
+          <img id="intro-img" src="" alt="" />
+        </div>
       </div>
 
       <!-- Regular stop -->
@@ -59,6 +86,9 @@
           <span id="reg-number" class="panel-stop-num"></span>
         </div>
         <h2 id="reg-title" class="panel-title"></h2>
+        <div id="reg-img-wrap" class="panel-img-wrap hidden">
+          <img id="reg-img" src="" alt="" />
+        </div>
         <dl id="panel-grid">
           <dt>Context</dt>   <dd id="p-context"></dd>
           <dt>Objective</dt> <dd id="p-obj"></dd>
@@ -69,22 +99,17 @@
       </div>
 
     </div><!-- /panel-scroll -->
-
-    <nav id="panel-nav" aria-label="Stop navigation">
-      <button id="btn-prev"     aria-label="Previous stop">←</button>
-      <button id="btn-overview" aria-label="Zoom out to full map">−</button>
-      <button id="btn-next"     aria-label="Next stop">→</button>
-    </nav>
-
   </aside>
 
-  <!-- ── Map-state controls ── -->
-  <div id="map-controls" aria-label="Map controls">
-    <!-- Before started: begin button -->
-    <button id="btn-begin" aria-label="Begin presentation">→</button>
-    <!-- After started: return to stop -->
-    <button id="btn-return" aria-label="Return to current stop" class="hidden">+</button>
+  <!-- ── Minimal bottom navigation (keyboard-first; these are fallbacks) ── -->
+  <div id="bottom-nav" aria-label="Navigation">
+    <button id="btn-prev" aria-label="Previous">←</button>
+    <button id="btn-map"  aria-label="Map overview" title="M — full map">map</button>
+    <button id="btn-next" aria-label="Next">→</button>
   </div>
+
+  <!-- ── Map return button (shown in map state) ── -->
+  <button id="btn-return" aria-label="Return to stop" class="hidden">+ return to stop</button>
 
   <script src="content.js"></script>
   <script src="app.js"></script>

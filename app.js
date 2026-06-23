@@ -1,15 +1,21 @@
 /* ============================================================
    APP.JS — Mind the Gap
-   State machine: 'map' → 'title' → 'stop'
+   States: title → stop → map (overview) → stop
+                ↑         ↑
+           finale (last stop)
    ============================================================ */
 
-// ── State ────────────────────────────────────────────────
-const STATE = { MAP: 'map', TITLE: 'title', STOP: 'stop' };
-let appState   = STATE.MAP;
-let curIndex   = 0;    // current stop index
-let hasStarted = false; // have we passed the title screen?
+// ── State machine ────────────────────────────────────────
+const STATE = { TITLE: 'title', STOP: 'stop', MAP: 'map', FINALE: 'finale' };
+let appState = STATE.TITLE;
+let curIndex = 0;
 
-// ── Theme color map ────────────────────────────────────────
+function setState(s) {
+  appState = s;
+  document.body.dataset.state = s;
+}
+
+// ── Theme colors ─────────────────────────────────────────
 const THEME_COLORS = {
   'bay-blue':               '#14558F',
   'berkshires-green':       '#388557',
@@ -18,258 +24,330 @@ const THEME_COLORS = {
   'granite-gray':           '#535353',
 };
 function themeHex(stop) {
-  if (!stop.theme) return '#535353';
-  const varName = THEMES[stop.theme];
-  return THEME_COLORS[varName] || '#535353';
+  const v = stop.theme ? THEMES[stop.theme] : null;
+  return THEME_COLORS[v] || '#535353';
 }
 
 // ── Element refs ─────────────────────────────────────────
-const transitSvg   = document.getElementById('transit-svg');
-const panGroup     = document.getElementById('pan-group');
-const pathDim      = document.getElementById('path-dim');
-const pathLit      = document.getElementById('path-lit');
-const stationsGrp  = document.getElementById('stations-group');
+const transitSvg    = document.getElementById('transit-svg');
+const svgDefs       = document.getElementById('svg-defs');
+const panGroup      = document.getElementById('pan-group');
+const pathDim       = document.getElementById('path-dim');
+const pathLit       = document.getElementById('path-lit');
+const stationsGrp   = document.getElementById('stations-group');
 
-const titleScreen  = document.getElementById('title-screen');
+const titleScreen   = document.getElementById('title-screen');
+const finaleScreen  = document.getElementById('finale-screen');
+const finaleBodyEl  = document.getElementById('finale-body-text');
 
-const stopPanel    = document.getElementById('stop-panel');
-const panelIntro   = document.getElementById('panel-intro');
-const panelRegular = document.getElementById('panel-regular');
-const introTitle   = document.getElementById('intro-title');
-const introBody    = document.getElementById('intro-body');
-const regTag       = document.getElementById('reg-tag');
-const regNumber    = document.getElementById('reg-number');
-const regTitle     = document.getElementById('reg-title');
-const pContext     = document.getElementById('p-context');
-const pObj         = document.getElementById('p-obj');
-const pHow         = document.getElementById('p-how');
-const pRlabel      = document.getElementById('p-rlabel');
-const pResult      = document.getElementById('p-result');
+const stopPanel     = document.getElementById('stop-panel');
+const panelIntro    = document.getElementById('panel-intro');
+const panelRegular  = document.getElementById('panel-regular');
+const introTitleEl  = document.getElementById('intro-title');
+const introBodyEl   = document.getElementById('intro-body');
+const introImgWrap  = document.getElementById('intro-img-wrap');
+const introImg      = document.getElementById('intro-img');
+const regTag        = document.getElementById('reg-tag');
+const regNumber     = document.getElementById('reg-number');
+const regTitle      = document.getElementById('reg-title');
+const regImgWrap    = document.getElementById('reg-img-wrap');
+const regImg        = document.getElementById('reg-img');
+const pContext      = document.getElementById('p-context');
+const pObj          = document.getElementById('p-obj');
+const pHow          = document.getElementById('p-how');
+const pRlabel       = document.getElementById('p-rlabel');
+const pResult       = document.getElementById('p-result');
 
-const btnPrev      = document.getElementById('btn-prev');
-const btnNext      = document.getElementById('btn-next');
-const btnOverview  = document.getElementById('btn-overview');
-const btnBegin     = document.getElementById('btn-begin');
-const btnReturn    = document.getElementById('btn-return');
+const btnPrev       = document.getElementById('btn-prev');
+const btnMap        = document.getElementById('btn-map');
+const btnNext       = document.getElementById('btn-next');
+const btnReturn     = document.getElementById('btn-return');
 
 // ── Line waypoints (% of viewport) ───────────────────────
-// A meandering path that changes direction several times,
-// like a real transit map.
-const LINE_WAYPOINTS_PCT = [
-  [6,  48],   // start: left, near center
-  [22, 48],   // → right
-  [22, 22],   // ↑ up
-  [42, 22],   // → right
-  [42, 60],   // ↓ down
-  [58, 60],   // → right
-  [58, 30],   // ↑ up
-  [78, 30],   // → right
-  [78, 68],   // ↓ down
-  [93, 68],   // → end
+// Meanders like a real transit map — 9 direction changes.
+const LINE_WP = [
+  [6,  48],  // start left
+  [22, 48],  // → right
+  [22, 22],  // ↑ up
+  [42, 22],  // → right
+  [42, 60],  // ↓ down
+  [58, 60],  // → right
+  [58, 30],  // ↑ up
+  [78, 30],  // → right
+  [78, 68],  // ↓ down
+  [93, 68],  // → end
 ];
 
-// Stop positions on the path (set during initMap)
-let stopPositions = []; // [{x, y, len}] for each stop
-let pathTotalLen  = 0;
+let stopPos    = [];   // [{x, y, len}] per stop
+let pathLen    = 0;
 
-// ── Build rounded SVG path ────────────────────────────────
+// ── Build smooth rounded SVG path ────────────────────────
 function buildRoundedPath(pts, r) {
   if (pts.length < 2) return '';
   let d = `M ${pts[0][0]} ${pts[0][1]}`;
   for (let i = 1; i < pts.length - 1; i++) {
-    const [x0, y0] = pts[i - 1];
-    const [x1, y1] = pts[i];
-    const [x2, y2] = pts[i + 1];
-    const dx1 = x1 - x0, dy1 = y1 - y0;
-    const len1 = Math.hypot(dx1, dy1);
-    const dx2 = x2 - x1, dy2 = y2 - y1;
-    const len2 = Math.hypot(dx2, dy2);
-    const cr = Math.min(r, len1 / 2, len2 / 2);
-    const bx = x1 - (dx1 / len1) * cr;
-    const by = y1 - (dy1 / len1) * cr;
-    const ax = x1 + (dx2 / len2) * cr;
-    const ay = y1 + (dy2 / len2) * cr;
+    const [x0, y0] = pts[i-1], [x1, y1] = pts[i], [x2, y2] = pts[i+1];
+    const d1 = Math.hypot(x1-x0, y1-y0), d2 = Math.hypot(x2-x1, y2-y1);
+    const cr = Math.min(r, d1/2, d2/2);
+    const bx = x1 - ((x1-x0)/d1)*cr, by = y1 - ((y1-y0)/d1)*cr;
+    const ax = x1 + ((x2-x1)/d2)*cr, ay = y1 + ((y2-y1)/d2)*cr;
     d += ` L ${bx} ${by} Q ${x1} ${y1} ${ax} ${ay}`;
   }
-  const [lx, ly] = pts[pts.length - 1];
-  d += ` L ${lx} ${ly}`;
+  d += ` L ${pts.at(-1)[0]} ${pts.at(-1)[1]}`;
   return d;
 }
 
-// ── Init map (called on load and on resize) ───────────────
+// ── SVG text wrapping ─────────────────────────────────────
+function wrapSvgText(textEl, str, maxW, lineH) {
+  while (textEl.firstChild) textEl.removeChild(textEl.firstChild);
+  const x = parseFloat(textEl.getAttribute('x') || 0);
+  const words = str.split(/\s+/);
+  const lines = [];
+  let cur = '';
+
+  // Measure using a temp tspan
+  const probe = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+  probe.setAttribute('visibility', 'hidden');
+  textEl.appendChild(probe);
+
+  words.forEach(w => {
+    const test = cur ? `${cur} ${w}` : w;
+    probe.textContent = test;
+    if (probe.getComputedTextLength() > maxW && cur) {
+      lines.push(cur); cur = w;
+    } else { cur = test; }
+  });
+  if (cur) lines.push(cur);
+  textEl.removeChild(probe);
+
+  lines.forEach((line, li) => {
+    const ts = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+    ts.textContent = line;
+    ts.setAttribute('x', x);
+    ts.setAttribute('dy', li === 0 ? 0 : lineH);
+    textEl.appendChild(ts);
+  });
+}
+
+// ── Build branch lines (fading tails at path start/end) ──
+function buildBranchLines(W, H) {
+  document.querySelectorAll('.branch-line, .branch-grad').forEach(el => el.remove());
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const col   = '#388557';
+
+  function addGrad(id, x1, y1, x2, y2, op1, op2) {
+    const g = document.createElementNS(svgNS, 'linearGradient');
+    g.id = id; g.classList.add('branch-grad');
+    g.setAttribute('gradientUnits', 'userSpaceOnUse');
+    g.setAttribute('x1', x1); g.setAttribute('y1', y1);
+    g.setAttribute('x2', x2); g.setAttribute('y2', y2);
+    [[op1,'0%'],[op2,'100%']].forEach(([op, off]) => {
+      const s = document.createElementNS(svgNS, 'stop');
+      s.setAttribute('offset', off);
+      s.setAttribute('stop-color', col);
+      s.setAttribute('stop-opacity', op);
+      g.appendChild(s);
+    });
+    svgDefs.appendChild(g);
+  }
+
+  function addLine(id, x1, y1, x2, y2) {
+    const l = document.createElementNS(svgNS, 'line');
+    l.classList.add('branch-line');
+    l.setAttribute('x1', x1); l.setAttribute('y1', y1);
+    l.setAttribute('x2', x2); l.setAttribute('y2', y2);
+    l.setAttribute('stroke', `url(#${id})`);
+    panGroup.insertBefore(l, panGroup.firstChild);
+  }
+
+  const [sx, sy] = [LINE_WP[0][0]/100*W,   LINE_WP[0][1]/100*H];
+  const [ex, ey] = [LINE_WP.at(-1)[0]/100*W, LINE_WP.at(-1)[1]/100*H];
+  const blen = W * 0.10;
+
+  // Start branches — fade from node outward to the left
+  addGrad('bg-s1', sx, sy, sx-blen,      sy-blen*0.35, 0.55, 0);
+  addGrad('bg-s2', sx, sy, sx-blen*0.85, sy,           0.40, 0);
+  addGrad('bg-s3', sx, sy, sx-blen,      sy+blen*0.28, 0.30, 0);
+  addLine('bg-s1', sx, sy, sx-blen,      sy-blen*0.35);
+  addLine('bg-s2', sx, sy, sx-blen*0.85, sy);
+  addLine('bg-s3', sx, sy, sx-blen,      sy+blen*0.28);
+
+  // End branches — fade from node outward to the right
+  addGrad('bg-e1', ex, ey, ex+blen,      ey-blen*0.38, 0.55, 0);
+  addGrad('bg-e2', ex, ey, ex+blen*0.85, ey,           0.40, 0);
+  addGrad('bg-e3', ex, ey, ex+blen,      ey+blen*0.30, 0.30, 0);
+  addLine('bg-e1', ex, ey, ex+blen,      ey-blen*0.38);
+  addLine('bg-e2', ex, ey, ex+blen*0.85, ey);
+  addLine('bg-e3', ex, ey, ex+blen,      ey+blen*0.30);
+}
+
+// ── Init map ─────────────────────────────────────────────
 function initMap() {
   const W = transitSvg.clientWidth;
   const H = transitSvg.clientHeight;
   if (!W || !H) return;
 
-  // Convert waypoints % → px
-  const pts = LINE_WAYPOINTS_PCT.map(([xp, yp]) => [xp / 100 * W, yp / 100 * H]);
-
-  // Build the SVG path
-  const d = buildRoundedPath(pts, 38);
+  const pts = LINE_WP.map(([xp, yp]) => [xp/100*W, yp/100*H]);
+  const d   = buildRoundedPath(pts, 38);
   pathDim.setAttribute('d', d);
   pathLit.setAttribute('d', d);
 
-  // Measure total length
-  pathTotalLen = pathDim.getTotalLength();
-
-  // Distribute stops evenly along path
+  pathLen = pathDim.getTotalLength();
   const N = STOPS.length;
-  stopPositions = STOPS.map((_, i) => {
-    const frac = N > 1 ? i / (N - 1) : 0;
-    const len  = frac * pathTotalLen;
+
+  stopPos = STOPS.map((_, i) => {
+    const frac = N > 1 ? i / (N-1) : 0;
+    const len  = frac * pathLen;
     const pt   = pathDim.getPointAtLength(len);
     return { x: pt.x, y: pt.y, len };
   });
 
-  // Init dash for lit path (fully hidden to start)
-  pathLit.style.strokeDasharray  = pathTotalLen;
-  pathLit.style.strokeDashoffset = pathTotalLen;
+  pathLit.style.strokeDasharray  = pathLen;
+  pathLit.style.strokeDashoffset = pathLen;
 
-  // Draw stations
-  buildStations();
-
-  // Restore current state
-  updateProgress(curIndex, false);
+  buildBranchLines(W, H);
+  buildStations(W, H);
+  applyFog(curIndex);
+  updateLit(curIndex, false);
 }
 
-// ── Build station circles on the SVG ─────────────────────
-function buildStations() {
+// ── Build station circles ─────────────────────────────────
+function buildStations(W, H) {
   stationsGrp.innerHTML = '';
-  STOPS.forEach((stop, i) => {
-    const { x, y } = stopPositions[i];
-    const isIntroOutro = !!stop.type;
-    const r = isIntroOutro ? 7 : 8;
+  const svgNS = 'http://www.w3.org/2000/svg';
+  // Label wrapping: max ~110px wide
+  const labelMaxW = Math.min(110, W * 0.11);
 
-    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  STOPS.forEach((stop, i) => {
+    const { x, y } = stopPos[i];
+    const isDeco   = !!stop.type;      // intro/outro/finale = smaller circle
+    const r        = isDeco ? 6 : 8;
+
+    const g = document.createElementNS(svgNS, 'g');
+    g.classList.add('station-g');
     g.dataset.stopIndex = i;
 
-    // Visible circle
-    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    circle.setAttribute('cx', x);
-    circle.setAttribute('cy', y);
-    circle.setAttribute('r', r);
-    circle.classList.add('station-circle');
-    if (isIntroOutro) circle.setAttribute('stroke-dasharray', '4 3');
+    // Circle
+    const c = document.createElementNS(svgNS, 'circle');
+    c.setAttribute('cx', x); c.setAttribute('cy', y); c.setAttribute('r', r);
+    c.classList.add('station-circle');
+    if (isDeco) c.setAttribute('stroke-dasharray', '4 3');
 
-    // Label
-    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    label.setAttribute('x', x);
-    label.setAttribute('y', y - r - 6);
-    label.setAttribute('text-anchor', 'middle');
-    label.classList.add('station-label');
-    if (isIntroOutro) label.classList.add(stop.type === 'intro' ? 'intro-stop' : 'outro-stop');
-    label.textContent = stop.title;
+    // Label — alternates above/below to reduce overlap
+    const above = i % 2 === 0;
+    const lx = x, ly = above ? y - r - 7 : y + r + 16;
+    const lbl = document.createElementNS(svgNS, 'text');
+    lbl.setAttribute('x', lx);
+    lbl.setAttribute('y', ly);
+    lbl.setAttribute('text-anchor', 'middle');
+    lbl.classList.add('station-label');
+    wrapSvgText(lbl, stop.title, labelMaxW, 14);
 
-    // Hit target (larger invisible circle for easier clicking)
-    const hit = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    hit.setAttribute('cx', x);
-    hit.setAttribute('cy', y);
-    hit.setAttribute('r', 18);
+    // Hit target (larger, transparent)
+    const hit = document.createElementNS(svgNS, 'circle');
+    hit.setAttribute('cx', x); hit.setAttribute('cy', y); hit.setAttribute('r', 20);
     hit.classList.add('station-hit');
-    hit.setAttribute('aria-label', `Jump to: ${stop.title}`);
     hit.setAttribute('role', 'button');
     hit.setAttribute('tabindex', '0');
-    hit.addEventListener('click', () => jumpToStop(i));
-    hit.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); jumpToStop(i); }
-    });
+    hit.setAttribute('aria-label', stop.title);
+    hit.addEventListener('click',   () => jumpToStop(i));
+    hit.addEventListener('keydown', e => { if (e.key==='Enter'||e.key===' ') { e.preventDefault(); jumpToStop(i); } });
 
-    g.appendChild(circle);
-    g.appendChild(label);
-    g.appendChild(hit);
+    g.appendChild(c); g.appendChild(lbl); g.appendChild(hit);
     stationsGrp.appendChild(g);
   });
-
-  refreshStationStyles();
 }
 
-// ── Update station styles to reflect visited/current ─────
-function refreshStationStyles() {
-  stationsGrp.querySelectorAll('[data-stop-index]').forEach(g => {
-    const i      = parseInt(g.dataset.stopIndex);
-    const circle = g.querySelector('.station-circle');
-    const label  = g.querySelector('.station-label');
-    circle.classList.remove('visited', 'current');
-    label.classList.remove('current');
-    if (i < curIndex)  circle.classList.add('visited');
-    if (i === curIndex) { circle.classList.add('current'); label.classList.add('current'); }
+// ── Fog/tunnel: dim stations ahead of current ─────────────
+function applyFog(idx) {
+  stationsGrp.querySelectorAll('.station-g').forEach(g => {
+    const i    = parseInt(g.dataset.stopIndex);
+    const dist = i - idx;
+    let op;
+    if (dist <= 0) op = 1.0;          // current + visited: fully lit
+    else if (dist === 1) op = 0.62;
+    else if (dist === 2) op = 0.38;
+    else if (dist === 3) op = 0.20;
+    else                 op = 0.10;
+    g.style.opacity = op;
+
+    const c = g.querySelector('.station-circle');
+    c.classList.remove('visited', 'current');
+    const lbl = g.querySelector('.station-label');
+    lbl.classList.remove('current');
+    if (i < idx)  c.classList.add('visited');
+    if (i === idx) { c.classList.add('current'); lbl.classList.add('current'); }
   });
 }
 
-// ── Update lit path to show progress up to stop i ────────
-function updateProgress(index, animate) {
-  if (!pathTotalLen) return;
-  const litLen = stopPositions[index]?.len ?? 0;
+// ── Update lit track portion ──────────────────────────────
+function updateLit(idx, animate) {
+  if (!pathLen) return;
+  const lit = stopPos[idx]?.len ?? 0;
   if (!animate) {
+    const prev = pathLit.style.transition;
     pathLit.style.transition = 'none';
-    pathLit.style.strokeDashoffset = pathTotalLen - litLen;
-    // Re-enable transition after paint
-    requestAnimationFrame(() => {
-      pathLit.style.transition = '';
-    });
+    pathLit.style.strokeDashoffset = pathLen - lit;
+    requestAnimationFrame(() => { pathLit.style.transition = prev || ''; });
   } else {
-    pathLit.style.strokeDashoffset = pathTotalLen - litLen;
+    pathLit.style.strokeDashoffset = pathLen - lit;
   }
-  refreshStationStyles();
 }
 
-// ── Render stop panel for stop at index ──────────────────
-function renderPanel(index) {
-  const stop = STOPS[index];
-  const isIntroOutro = !!stop.type;
+// ── Render the stop panel ─────────────────────────────────
+function renderPanel(idx) {
+  const stop    = STOPS[idx];
+  const isIntro = !!stop.type && stop.type !== 'finale';
 
-  panelIntro.classList.toggle('hidden', !isIntroOutro);
-  panelRegular.classList.toggle('hidden', isIntroOutro);
+  panelIntro.classList.toggle('hidden', !isIntro);
+  panelRegular.classList.toggle('hidden', isIntro);
 
-  if (isIntroOutro) {
-    // Cold open: show full wordmark; closer: just title text
-    if (stop.type === 'intro') {
-      introTitle.innerHTML = `<span class="wordmark" style="font-size:clamp(1.6rem,3vw,2.2rem)">Mind the <span class="gap">Gap</span></span>`;
+  if (isIntro) {
+    // Cold-open: render wordmark; closer: plain title
+    if (stop.type === 'intro' && idx === 0) {
+      introTitleEl.innerHTML = `<span class="wordmark" style="font-size:clamp(1.5rem,2.8vw,2.1rem)">Mind the <span class="gap">Gap</span></span>`;
     } else {
-      introTitle.textContent = stop.title;
+      introTitleEl.textContent = stop.title;
     }
-    introBody.textContent = stop.body || '';
+    introBodyEl.textContent = stop.body || '';
+
+    if (stop.image) {
+      introImg.src = stop.image;
+      introImg.alt = stop.title;
+      introImgWrap.classList.remove('hidden');
+    } else {
+      introImgWrap.classList.add('hidden');
+    }
   } else {
     const color = themeHex(stop);
-    regTag.textContent  = stop.theme ? stop.theme.replace('_', ' ') : '';
+    regTag.textContent     = stop.theme ? stop.theme.replace('_',' ') : '';
     regTag.style.background = color;
-    regTag.style.display = stop.theme ? '' : 'none';
+    regTag.style.display   = stop.theme ? '' : 'none';
 
-    const regCount = STOPS.filter(s => !s.type);
-    const myReg    = STOPS.slice(0, index).filter(s => !s.type).length + 1;
-    regNumber.textContent = `${myReg} / ${regCount.length}`;
+    const regulars = STOPS.filter(s => !s.type);
+    const myN      = STOPS.slice(0, idx).filter(s => !s.type).length + 1;
+    regNumber.textContent = `${myN} of ${regulars.length}`;
+    regTitle.textContent  = stop.title;
+    pContext.textContent  = stop.context   || '';
+    pObj.textContent      = stop.objective || '';
+    pHow.textContent      = stop.how       || '';
+    pRlabel.textContent   = stop.resultLabel || 'Result';
+    pResult.textContent   = stop.result    || '';
 
-    regTitle.textContent    = stop.title;
-    pContext.textContent    = stop.context   || '';
-    pObj.textContent        = stop.objective || '';
-    pHow.textContent        = stop.how       || '';
-    pRlabel.textContent     = stop.resultLabel || 'Result';
-    pResult.textContent     = stop.result    || '';
+    if (stop.image) {
+      regImg.src = stop.image; regImg.alt = stop.title;
+      regImgWrap.classList.remove('hidden');
+    } else {
+      regImgWrap.classList.add('hidden');
+    }
   }
 
-  btnPrev.disabled = index === 0;
-  btnNext.disabled = index === STOPS.length - 1;
+  btnPrev.disabled = idx === 0;
+  btnNext.disabled = idx === STOPS.length - 1;
 }
 
-// ── Pan map to show current stop (smooth) ────────────────
-function panToStop(index) {
-  if (!stopPositions[index]) return;
-  const { x, y } = stopPositions[index];
-  const W = transitSvg.clientWidth;
-  const H = transitSvg.clientHeight;
-  // Pan so stop is at 65% from left (leaving room for panel) and centered vertically
-  const targetX = W * 0.65;
-  const targetY = H * 0.5;
-  viewTx.x += targetX - (x * viewTx.scale + viewTx.x);
-  viewTx.y += targetY - (y * viewTx.scale + viewTx.y);
-  applyViewTransform(true);
-}
-
-// ── Pan/zoom ──────────────────────────────────────────────
+// ── Pan map to show current stop ──────────────────────────
 let viewTx = { x: 0, y: 0, scale: 1 };
-let isPanning = false;
-let panStart  = null;
 
 function applyViewTransform(animated) {
   if (animated) {
@@ -277,8 +355,7 @@ function applyViewTransform(animated) {
     setTimeout(() => { panGroup.style.transition = ''; }, 520);
   }
   panGroup.setAttribute('transform',
-    `translate(${viewTx.x} ${viewTx.y}) scale(${viewTx.scale})`
-  );
+    `translate(${viewTx.x} ${viewTx.y}) scale(${viewTx.scale})`);
 }
 
 function resetViewTransform(animated) {
@@ -286,12 +363,26 @@ function resetViewTransform(animated) {
   applyViewTransform(animated);
 }
 
+function panToStop(idx) {
+  if (!stopPos[idx]) return;
+  const { x, y } = stopPos[idx];
+  const W = transitSvg.clientWidth;
+  const H = transitSvg.clientHeight;
+  // Target: 65% from left (leaves room for the panel), 50% vertical
+  const tx = W * 0.65 - x * viewTx.scale;
+  const ty = H * 0.50 - y * viewTx.scale;
+  viewTx.x = tx; viewTx.y = ty;
+  applyViewTransform(true);
+}
+
+// ── Pan/zoom (map state only) ─────────────────────────────
+let isPanning = false, panStart = null;
+
 transitSvg.addEventListener('mousedown', e => {
   if (appState !== STATE.MAP) return;
   if (e.target.closest('.station-hit')) return;
   isPanning = true;
   panStart  = { mx: e.clientX, my: e.clientY, tx: viewTx.x, ty: viewTx.y };
-  transitSvg.style.cursor = 'grabbing';
 });
 window.addEventListener('mousemove', e => {
   if (!isPanning) return;
@@ -299,84 +390,83 @@ window.addEventListener('mousemove', e => {
   viewTx.y = panStart.ty + (e.clientY - panStart.my);
   applyViewTransform(false);
 });
-window.addEventListener('mouseup', () => {
-  isPanning = false;
-  transitSvg.style.cursor = '';
-});
+window.addEventListener('mouseup', () => { isPanning = false; });
 
 transitSvg.addEventListener('wheel', e => {
   if (appState !== STATE.MAP) return;
   e.preventDefault();
-  const factor    = e.deltaY < 0 ? 1.12 : 0.89;
-  const newScale  = Math.max(0.35, Math.min(5, viewTx.scale * factor));
-  const scaleRatio = newScale / viewTx.scale;
-  // Zoom toward cursor
-  const rect = transitSvg.getBoundingClientRect();
-  const cx   = e.clientX - rect.left;
-  const cy   = e.clientY - rect.top;
-  viewTx.x   = cx - scaleRatio * (cx - viewTx.x);
-  viewTx.y   = cy - scaleRatio * (cy - viewTx.y);
-  viewTx.scale = newScale;
+  const f = e.deltaY < 0 ? 1.12 : 0.89;
+  const ns = Math.max(0.35, Math.min(5, viewTx.scale * f));
+  const r  = transitSvg.getBoundingClientRect();
+  const cx = e.clientX - r.left, cy = e.clientY - r.top;
+  const rf = ns / viewTx.scale;
+  viewTx.x = cx - rf * (cx - viewTx.x);
+  viewTx.y = cy - rf * (cy - viewTx.y);
+  viewTx.scale = ns;
   applyViewTransform(false);
 }, { passive: false });
 
-// Touch pan (map state)
-let touchStart = null;
+// Touch pan
+let touchPanStart = null;
 transitSvg.addEventListener('touchstart', e => {
   if (appState !== STATE.MAP || e.touches.length !== 1) return;
-  touchStart = { mx: e.touches[0].clientX, my: e.touches[0].clientY, tx: viewTx.x, ty: viewTx.y };
+  touchPanStart = { mx: e.touches[0].clientX, my: e.touches[0].clientY, tx: viewTx.x, ty: viewTx.y };
 }, { passive: true });
 transitSvg.addEventListener('touchmove', e => {
-  if (!touchStart || e.touches.length !== 1) return;
+  if (!touchPanStart || e.touches.length !== 1) return;
   e.preventDefault();
-  viewTx.x = touchStart.tx + (e.touches[0].clientX - touchStart.mx);
-  viewTx.y = touchStart.ty + (e.touches[0].clientY - touchStart.my);
+  viewTx.x = touchPanStart.tx + (e.touches[0].clientX - touchPanStart.mx);
+  viewTx.y = touchPanStart.ty + (e.touches[0].clientY - touchPanStart.my);
   applyViewTransform(false);
 }, { passive: false });
-transitSvg.addEventListener('touchend', () => { touchStart = null; });
+transitSvg.addEventListener('touchend', () => { touchPanStart = null; });
 
 // ── State transitions ─────────────────────────────────────
-function setState(s) {
-  appState = s;
-  document.body.dataset.state = s;
+function goTitle() {
+  setState(STATE.TITLE);
 }
 
-function goToMap() {
+function goMap() {
   resetViewTransform(true);
   setState(STATE.MAP);
 }
 
-function goToTitle() {
-  setState(STATE.TITLE);
-}
+function goStop(idx, animate) {
+  curIndex = Math.max(0, Math.min(STOPS.length - 1, idx));
+  const stop = STOPS[curIndex];
 
-function goToStop(index, animated) {
-  curIndex = Math.max(0, Math.min(STOPS.length - 1, index));
-  hasStarted = true;
-  document.body.dataset.started = 'true';
+  if (stop.type === 'finale') {
+    finaleBodyEl.textContent = stop.body || '';
+    updateLit(curIndex, animate !== false);
+    applyFog(curIndex);
+    setState(STATE.FINALE);
+    return;
+  }
+
   setState(STATE.STOP);
   renderPanel(curIndex);
-  updateProgress(curIndex, animated !== false);
+  updateLit(curIndex, animate !== false);
+  applyFog(curIndex);
   panToStop(curIndex);
 }
 
-function jumpToStop(index) {
-  goToStop(index, true);
-}
+function jumpToStop(idx) { goStop(idx, true); }
 
 function advance() {
-  if (appState === STATE.MAP && !hasStarted) { goToTitle(); return; }
-  if (appState === STATE.TITLE) { goToStop(0, true); return; }
+  if (appState === STATE.TITLE)  { goStop(0, true); return; }
+  if (appState === STATE.FINALE) return;
+  if (appState === STATE.MAP)    { goStop(curIndex, false); return; }
   if (appState === STATE.STOP && curIndex < STOPS.length - 1) {
-    goToStop(curIndex + 1, true);
+    goStop(curIndex + 1, true);
   }
 }
 
 function retreat() {
-  if (appState === STATE.STOP && curIndex > 0) {
-    goToStop(curIndex - 1, true);
-  } else if (appState === STATE.TITLE) {
-    setState(STATE.MAP);
+  if (appState === STATE.STOP || appState === STATE.FINALE) {
+    if (curIndex > 0) { goStop(curIndex - 1, true); }
+    else              { goTitle(); }
+  } else if (appState === STATE.MAP) {
+    goTitle();
   }
 }
 
@@ -384,52 +474,40 @@ function retreat() {
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
   switch (e.key) {
-    case 'ArrowRight':
-    case 'ArrowDown':
-    case ' ':
-      e.preventDefault();
-      advance();
-      break;
-    case 'ArrowLeft':
-    case 'ArrowUp':
-      e.preventDefault();
-      retreat();
-      break;
-    case 'Escape':
-    case 'm':
-    case 'M':
-      if (appState === STATE.STOP || appState === STATE.TITLE) goToMap();
-      break;
-    case 'f':
-    case 'F':
-      if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch(() => {});
-      } else {
-        document.exitFullscreen().catch(() => {});
-      }
+    case 'ArrowRight': case 'ArrowDown': case ' ':
+      e.preventDefault(); advance(); break;
+    case 'ArrowLeft': case 'ArrowUp':
+      e.preventDefault(); retreat(); break;
+    case 'Escape': case 'm': case 'M':
+      if (appState !== STATE.MAP) goMap(); break;
+    case 't': case 'T':
+      goTitle(); break;
+    case 'f': case 'F':
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{});
+      else document.exitFullscreen().catch(()=>{});
       break;
   }
 });
 
-// ── Clicking the title screen advances ───────────────────
-titleScreen.addEventListener('click', () => advance());
+// Click title or finale screen to advance
+titleScreen.addEventListener('click',  () => advance());
+finaleScreen.addEventListener('click', () => retreat());   // click finale → back
 
-// ── Button handlers ───────────────────────────────────────
-btnBegin.addEventListener('click',    () => advance());
-btnReturn.addEventListener('click',   () => goToStop(curIndex, false));
-btnOverview.addEventListener('click', () => goToMap());
-btnPrev.addEventListener('click',     () => retreat());
-btnNext.addEventListener('click',     () => advance());
+// Buttons
+btnPrev.addEventListener('click', () => retreat());
+btnNext.addEventListener('click', () => advance());
+btnMap.addEventListener('click',  () => goMap());
+btnReturn.addEventListener('click', () => goStop(curIndex, false));
 
 // ── Resize ────────────────────────────────────────────────
-let resizeTimer = null;
+let resizeTimer;
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => { initMap(); }, 120);
+  resizeTimer = setTimeout(() => { viewTx = {x:0,y:0,scale:1}; initMap(); }, 120);
 });
 
 // ── Init ─────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
   initMap();
-  setState(STATE.MAP);
+  setState(STATE.TITLE);
 });
