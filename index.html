@@ -6,102 +6,85 @@
   <title>Mind the Gap — Fellowship Line</title>
   <link rel="stylesheet" href="style.css" />
 </head>
-<body>
+<body data-state="map" data-started="false">
 
-  <!-- MAP VIEW -->
-  <div id="map-view" class="view hidden" role="main" aria-label="Transit map overview">
-    <div id="map-header">
-      <h1 class="wordmark">Mind the Gap</h1>
-      <p class="map-subtitle">Click any station to jump to that stop</p>
-    </div>
-    <div id="map-canvas" aria-label="Interactive transit map"></div>
-    <div id="map-legend">
-      <span class="legend-line fellowship">Fellowship Line</span>
-      <span class="legend-line duckling">Duckling Line</span>
-    </div>
+  <!-- ── Map layer — always rendered ── -->
+  <div id="map-layer">
+    <svg id="transit-svg" aria-label="Fellowship Line transit map" xmlns="http://www.w3.org/2000/svg">
+      <g id="pan-group">
+        <path id="path-dim" class="track track-dim" />
+        <path id="path-lit" class="track track-lit" />
+        <g id="stations-group"></g>
+      </g>
+    </svg>
   </div>
 
-  <!-- STOP VIEW -->
-  <div id="stop-view" class="view" role="main">
-
-    <!-- Track / tunnel layer (SVG, sits behind content) -->
-    <svg id="track-svg" aria-hidden="true" preserveAspectRatio="none">
-      <defs>
-        <filter id="tunnel-glow">
-          <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/>
-          <feComposite in="SourceGraphic" in2="blur" operator="over"/>
-        </filter>
-      </defs>
-      <!-- Horizontal track line -->
-      <line id="track-line" x1="0" y1="50%" x2="100%" y2="50%" />
-      <!-- Lit segment (animates on advance) -->
-      <line id="track-lit"  x1="0" y1="50%" x2="0"    y2="50%" />
-      <!-- Stations on track -->
-      <g id="track-stations"></g>
-    </svg>
-
-    <!-- Character marker -->
-    <div id="you-are-here" aria-label="Current position marker">
-      <div class="marker-figure">🧍</div>
-      <div class="marker-label">You are here</div>
+  <!-- ── Title screen overlay ── -->
+  <div id="title-screen" aria-hidden="true">
+    <div class="title-inner">
+      <div class="title-tag">Fellowship Line · Spring 2026</div>
+      <h1 class="wordmark">Mind the <span class="gap">Gap</span></h1>
+      <p class="title-sub">Oussama Ouadani &nbsp;·&nbsp; The Lab @ MassDOT</p>
     </div>
+    <!-- Decorative transit lines on title screen -->
+    <svg class="title-deco-lines" aria-hidden="true">
+      <line class="deco-fellowship" x1="0" y1="70%" x2="100%" y2="70%" />
+      <circle class="deco-station fellowship" cx="20%" cy="70%" r="8" />
+      <circle class="deco-station fellowship" cx="50%" cy="70%" r="8" />
+      <circle class="deco-station fellowship" cx="80%" cy="70%" r="8" />
+      <line class="deco-duckling" x1="0" y1="80%" x2="100%" y2="80%" />
+      <circle class="deco-station duckling" cx="35%" cy="80%" r="8" />
+      <circle class="deco-station duckling" cx="65%" cy="80%" r="8" />
+    </svg>
+  </div>
 
-    <!-- Main stop card -->
-    <div id="stop-card">
+  <!-- ── Stop panel (left side card) ── -->
+  <aside id="stop-panel" aria-live="polite">
 
-      <!-- Intro / outro (type="intro"|"outro") -->
-      <div id="intro-layout" class="stop-layout hidden">
-        <div class="intro-line-badge" id="intro-line-badge"></div>
-        <h2 id="intro-title" class="stop-title"></h2>
+    <div id="panel-scroll">
+
+      <!-- Intro / outro (type: "intro" | "outro") -->
+      <div id="panel-intro" class="hidden">
+        <div class="panel-tag-row">
+          <span class="panel-line-tag">Fellowship Line</span>
+        </div>
+        <h2 id="intro-title" class="panel-title"></h2>
         <p  id="intro-body"  class="intro-body"></p>
-        <div id="intro-image" class="stop-image-wrap hidden"></div>
       </div>
 
-      <!-- Regular four-point stop -->
-      <div id="grid-layout" class="stop-layout hidden">
-        <div class="stop-meta-row">
-          <span id="stop-theme-badge" class="theme-badge"></span>
-          <span id="stop-number"      class="stop-number"></span>
+      <!-- Regular stop -->
+      <div id="panel-regular" class="hidden">
+        <div class="panel-tag-row">
+          <span id="reg-tag"    class="panel-theme-tag"></span>
+          <span id="reg-number" class="panel-stop-num"></span>
         </div>
-        <h2 id="stop-title" class="stop-title"></h2>
-        <div id="stop-image-wrap" class="stop-image-wrap hidden">
-          <img id="stop-image" src="" alt="" />
-        </div>
-        <dl id="stop-grid" class="stop-grid">
-          <dt>Context</dt>   <dd id="pt-context"></dd>
-          <dt>Objective</dt> <dd id="pt-objective"></dd>
-          <dt>How</dt>       <dd id="pt-how"></dd>
-          <dt id="pt-result-label">Result</dt>
-          <dd id="pt-result"></dd>
+        <h2 id="reg-title" class="panel-title"></h2>
+        <dl id="panel-grid">
+          <dt>Context</dt>   <dd id="p-context"></dd>
+          <dt>Objective</dt> <dd id="p-obj"></dd>
+          <dt>How</dt>       <dd id="p-how"></dd>
+          <dt id="p-rlabel">Result</dt>
+          <dd id="p-result"></dd>
         </dl>
-        <div id="peak-badge" class="peak-badge hidden">Peak stop</div>
       </div>
 
-    </div><!-- /stop-card -->
+    </div><!-- /panel-scroll -->
 
-    <!-- Presenter notes (N to toggle) -->
-    <aside id="presenter-notes" class="hidden" aria-live="polite">
-      <div class="notes-label">Presenter notes</div>
-      <p id="notes-text"></p>
-    </aside>
-
-    <!-- Navigation controls -->
-    <nav id="stop-nav" aria-label="Stop navigation">
-      <button id="btn-back"    aria-label="Previous stop">←</button>
-      <div    id="stop-dots"   aria-label="Progress"></div>
-      <button id="btn-forward" aria-label="Next stop">→</button>
+    <nav id="panel-nav" aria-label="Stop navigation">
+      <button id="btn-prev"     aria-label="Previous stop">←</button>
+      <button id="btn-overview" aria-label="Zoom out to full map">−</button>
+      <button id="btn-next"     aria-label="Next stop">→</button>
     </nav>
 
-    <!-- Keyboard hint bar -->
-    <div id="key-hints" aria-hidden="true">
-      <span>→ / Space — advance</span>
-      <span>← — back</span>
-      <span>M — map view</span>
-      <span>N — notes</span>
-      <span>F — fullscreen</span>
-    </div>
+  </aside>
 
-  </div><!-- /stop-view -->
+  <!-- ── Map-state controls ── -->
+  <div id="map-controls" aria-label="Map controls">
+    <!-- Before started: begin button -->
+    <button id="btn-begin" aria-label="Begin presentation">→</button>
+    <!-- After started: return to stop -->
+    <button id="btn-return" aria-label="Return to current stop" class="hidden">+</button>
+  </div>
 
   <script src="content.js"></script>
   <script src="app.js"></script>

@@ -1,395 +1,435 @@
 /* ============================================================
    APP.JS — Mind the Gap
-   No framework. No build step. Reads content.js globals.
+   State machine: 'map' → 'title' → 'stop'
    ============================================================ */
 
 // ── State ────────────────────────────────────────────────
-let currentIndex = 0;
-let showingMap   = false;
-let showingNotes = false;
+const STATE = { MAP: 'map', TITLE: 'title', STOP: 'stop' };
+let appState   = STATE.MAP;
+let curIndex   = 0;    // current stop index
+let hasStarted = false; // have we passed the title screen?
 
-// Theme → CSS variable name lookup
-const THEME_VARS = {
+// ── Theme color map ────────────────────────────────────────
+const THEME_COLORS = {
   'bay-blue':               '#14558F',
   'berkshires-green':       '#388557',
   'duckling-yellow':        '#F6C51B',
   'independence-cranberry': '#680A1D',
   'granite-gray':           '#535353',
-  'danger-red':             '#CD0D0D',
 };
-
-function themeColor(stop) {
+function themeHex(stop) {
   if (!stop.theme) return '#535353';
   const varName = THEMES[stop.theme];
-  return THEME_VARS[varName] || '#535353';
+  return THEME_COLORS[varName] || '#535353';
 }
 
 // ── Element refs ─────────────────────────────────────────
-const stopView    = document.getElementById('stop-view');
-const mapView     = document.getElementById('map-view');
-const stopCard    = document.getElementById('stop-card');
+const transitSvg   = document.getElementById('transit-svg');
+const panGroup     = document.getElementById('pan-group');
+const pathDim      = document.getElementById('path-dim');
+const pathLit      = document.getElementById('path-lit');
+const stationsGrp  = document.getElementById('stations-group');
 
-const introLayout = document.getElementById('intro-layout');
-const gridLayout  = document.getElementById('grid-layout');
+const titleScreen  = document.getElementById('title-screen');
 
-const introBadge  = document.getElementById('intro-line-badge');
-const introTitle  = document.getElementById('intro-title');
-const introBody   = document.getElementById('intro-body');
-const introImgWrap= document.getElementById('intro-image');
+const stopPanel    = document.getElementById('stop-panel');
+const panelIntro   = document.getElementById('panel-intro');
+const panelRegular = document.getElementById('panel-regular');
+const introTitle   = document.getElementById('intro-title');
+const introBody    = document.getElementById('intro-body');
+const regTag       = document.getElementById('reg-tag');
+const regNumber    = document.getElementById('reg-number');
+const regTitle     = document.getElementById('reg-title');
+const pContext     = document.getElementById('p-context');
+const pObj         = document.getElementById('p-obj');
+const pHow         = document.getElementById('p-how');
+const pRlabel      = document.getElementById('p-rlabel');
+const pResult      = document.getElementById('p-result');
 
-const themeBadge  = document.getElementById('stop-theme-badge');
-const stopNumber  = document.getElementById('stop-number');
-const stopTitle   = document.getElementById('stop-title');
-const stopImgWrap = document.getElementById('stop-image-wrap');
-const stopImg     = document.getElementById('stop-image');
-const ptContext   = document.getElementById('pt-context');
-const ptObjective = document.getElementById('pt-objective');
-const ptHow       = document.getElementById('pt-how');
-const ptResultLbl = document.getElementById('pt-result-label');
-const ptResult    = document.getElementById('pt-result');
-const peakBadge   = document.getElementById('peak-badge');
+const btnPrev      = document.getElementById('btn-prev');
+const btnNext      = document.getElementById('btn-next');
+const btnOverview  = document.getElementById('btn-overview');
+const btnBegin     = document.getElementById('btn-begin');
+const btnReturn    = document.getElementById('btn-return');
 
-const notesPanel  = document.getElementById('presenter-notes');
-const notesText   = document.getElementById('notes-text');
+// ── Line waypoints (% of viewport) ───────────────────────
+// A meandering path that changes direction several times,
+// like a real transit map.
+const LINE_WAYPOINTS_PCT = [
+  [6,  48],   // start: left, near center
+  [22, 48],   // → right
+  [22, 22],   // ↑ up
+  [42, 22],   // → right
+  [42, 60],   // ↓ down
+  [58, 60],   // → right
+  [58, 30],   // ↑ up
+  [78, 30],   // → right
+  [78, 68],   // ↓ down
+  [93, 68],   // → end
+];
 
-const btnBack     = document.getElementById('btn-back');
-const btnForward  = document.getElementById('btn-forward');
-const dotsContainer = document.getElementById('stop-dots');
+// Stop positions on the path (set during initMap)
+let stopPositions = []; // [{x, y, len}] for each stop
+let pathTotalLen  = 0;
 
-const youAreHere  = document.getElementById('you-are-here');
-const trackLit    = document.getElementById('track-lit');
-const trackStations = document.getElementById('track-stations');
-const mapCanvas   = document.getElementById('map-canvas');
-
-// ── Render stop view ─────────────────────────────────────
-function renderStop(index) {
-  const stop = STOPS[index];
-  const isIntro = stop.type === 'intro' || stop.type === 'outro';
-
-  // Toggle layouts
-  introLayout.classList.toggle('hidden', !isIntro);
-  gridLayout.classList.toggle('hidden',  isIntro);
-
-  if (isIntro) {
-    // Wordmark on cold-open / closer
-    const isFirst = index === 0;
-    introBadge.textContent = isFirst ? META.line : 'End of the line';
-    // Render title with "Gap" underlined on cold open
-    if (isFirst) {
-      introTitle.innerHTML = '<span class="wordmark">Mind the <span class="gap">Gap</span></span>';
-    } else {
-      introTitle.innerHTML = '';
-      introTitle.textContent = stop.title;
-      introTitle.className = 'stop-title';
-    }
-    introBody.textContent = stop.body;
-    if (stop.image) {
-      introImgWrap.innerHTML = `<img src="${stop.image}" alt="${stop.title}" />`;
-      introImgWrap.classList.remove('hidden');
-    } else {
-      introImgWrap.classList.add('hidden');
-    }
-  } else {
-    // Theme badge
-    const color = themeColor(stop);
-    themeBadge.textContent = stop.theme ? stop.theme.replace('_', ' ') : '';
-    themeBadge.style.setProperty('--theme-color', color);
-    themeBadge.style.background = color;
-
-    // Stop number (count only non-intro/outro stops before this one)
-    const regularsBefore = STOPS.slice(0, index).filter(s => !s.type).length;
-    stopNumber.textContent = `Stop ${regularsBefore + 1} of ${STOPS.filter(s => !s.type).length}`;
-
-    stopTitle.textContent = stop.title;
-
-    ptContext.textContent   = stop.context   || '';
-    ptObjective.textContent = stop.objective || '';
-    ptHow.textContent       = stop.how       || '';
-    ptResultLbl.textContent = stop.resultLabel || 'Result';
-    ptResult.textContent    = stop.result    || '';
-
-    peakBadge.classList.toggle('hidden', !stop.peak);
-
-    if (stop.image) {
-      stopImg.src = stop.image;
-      stopImg.alt = stop.title;
-      stopImgWrap.classList.remove('hidden');
-    } else {
-      stopImgWrap.classList.add('hidden');
-    }
+// ── Build rounded SVG path ────────────────────────────────
+function buildRoundedPath(pts, r) {
+  if (pts.length < 2) return '';
+  let d = `M ${pts[0][0]} ${pts[0][1]}`;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const [x0, y0] = pts[i - 1];
+    const [x1, y1] = pts[i];
+    const [x2, y2] = pts[i + 1];
+    const dx1 = x1 - x0, dy1 = y1 - y0;
+    const len1 = Math.hypot(dx1, dy1);
+    const dx2 = x2 - x1, dy2 = y2 - y1;
+    const len2 = Math.hypot(dx2, dy2);
+    const cr = Math.min(r, len1 / 2, len2 / 2);
+    const bx = x1 - (dx1 / len1) * cr;
+    const by = y1 - (dy1 / len1) * cr;
+    const ax = x1 + (dx2 / len2) * cr;
+    const ay = y1 + (dy2 / len2) * cr;
+    d += ` L ${bx} ${by} Q ${x1} ${y1} ${ax} ${ay}`;
   }
-
-  // Presenter notes
-  notesText.textContent = stop.notes || '(no notes for this stop)';
-
-  // Nav buttons
-  btnBack.disabled    = index === 0;
-  btnForward.disabled = index === STOPS.length - 1;
-
-  // Progress dots
-  renderDots(index);
-
-  // Track animation
-  updateTrack(index);
+  const [lx, ly] = pts[pts.length - 1];
+  d += ` L ${lx} ${ly}`;
+  return d;
 }
 
-// ── Progress dots ─────────────────────────────────────────
-function renderDots(activeIndex) {
-  dotsContainer.innerHTML = '';
+// ── Init map (called on load and on resize) ───────────────
+function initMap() {
+  const W = transitSvg.clientWidth;
+  const H = transitSvg.clientHeight;
+  if (!W || !H) return;
+
+  // Convert waypoints % → px
+  const pts = LINE_WAYPOINTS_PCT.map(([xp, yp]) => [xp / 100 * W, yp / 100 * H]);
+
+  // Build the SVG path
+  const d = buildRoundedPath(pts, 38);
+  pathDim.setAttribute('d', d);
+  pathLit.setAttribute('d', d);
+
+  // Measure total length
+  pathTotalLen = pathDim.getTotalLength();
+
+  // Distribute stops evenly along path
+  const N = STOPS.length;
+  stopPositions = STOPS.map((_, i) => {
+    const frac = N > 1 ? i / (N - 1) : 0;
+    const len  = frac * pathTotalLen;
+    const pt   = pathDim.getPointAtLength(len);
+    return { x: pt.x, y: pt.y, len };
+  });
+
+  // Init dash for lit path (fully hidden to start)
+  pathLit.style.strokeDasharray  = pathTotalLen;
+  pathLit.style.strokeDashoffset = pathTotalLen;
+
+  // Draw stations
+  buildStations();
+
+  // Restore current state
+  updateProgress(curIndex, false);
+}
+
+// ── Build station circles on the SVG ─────────────────────
+function buildStations() {
+  stationsGrp.innerHTML = '';
   STOPS.forEach((stop, i) => {
-    const dot = document.createElement('button');
-    dot.className = 'dot' + (stop.type ? ` ${stop.type}` : '') + (i === activeIndex ? ' active' : '');
-    dot.setAttribute('aria-label', `Go to stop: ${stop.title}`);
-    dot.setAttribute('aria-current', i === activeIndex ? 'step' : 'false');
-    dot.addEventListener('click', () => goTo(i));
-    dotsContainer.appendChild(dot);
-  });
-}
+    const { x, y } = stopPositions[i];
+    const isIntroOutro = !!stop.type;
+    const r = isIntroOutro ? 7 : 8;
 
-// ── Track animation ───────────────────────────────────────
-function updateTrack(index) {
-  const total = STOPS.length;
-  const pct   = total > 1 ? (index / (total - 1)) * 100 : 0;
-
-  // Lit segment from left to current position
-  trackLit.setAttribute('x2', pct + '%');
-
-  // Move marker
-  youAreHere.style.left = pct + '%';
-
-  // Update station circles on track
-  trackStations.querySelectorAll('circle').forEach((c, i) => {
-    c.classList.toggle('active', i <= index);
-  });
-}
-
-// ── Map view ──────────────────────────────────────────────
-function buildMap() {
-  const stops    = STOPS;
-  const total    = stops.length;
-  const padding  = 60;
-
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('width', '100%');
-  svg.setAttribute('height', '100%');
-  svg.setAttribute('aria-label', 'Transit map showing all fellowship stops');
-
-  const rect = mapCanvas.getBoundingClientRect();
-  const W = rect.width  || 800;
-  const H = rect.height || 500;
-
-  const usableW = W - padding * 2;
-  const usableH = H - padding * 2;
-
-  // Layout stops along a gentle S-curve / zigzag path
-  // Split into rows of ~6 stops each, alternating direction
-  const COLS    = Math.ceil(Math.sqrt(total * 1.6));
-  const rows    = [];
-  let row = [];
-  stops.forEach((s, i) => {
-    row.push(s);
-    if (row.length === COLS || i === stops.length - 1) {
-      rows.push([...row]);
-      row = [];
-    }
-  });
-
-  // Compute (x,y) for each stop
-  const positions = [];
-  rows.forEach((rowStops, ri) => {
-    const isReversed = ri % 2 === 1;
-    const ordered    = isReversed ? [...rowStops].reverse() : rowStops;
-    const yFrac      = rows.length > 1 ? ri / (rows.length - 1) : 0.5;
-    const y          = padding + yFrac * usableH;
-    ordered.forEach((stop, ci) => {
-      const xFrac = rowStops.length > 1 ? ci / (rowStops.length - 1) : 0.5;
-      const x     = padding + xFrac * usableW;
-      positions.push({ stop, x, y });
-    });
-  });
-
-  // Sort positions back to STOPS order
-  const pos = stops.map(s => positions.find(p => p.stop.id === s.id));
-
-  // Draw Fellowship Line path
-  const pathPoints = pos.map(p => `${p.x},${p.y}`).join(' L ');
-  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  path.setAttribute('d', `M ${pathPoints}`);
-  path.setAttribute('fill', 'none');
-  path.setAttribute('stroke', '#388557');
-  path.setAttribute('stroke-width', '5');
-  path.setAttribute('stroke-linecap', 'round');
-  path.setAttribute('stroke-linejoin', 'round');
-  svg.appendChild(path);
-
-  // Draw station circles and labels
-  pos.forEach((p, i) => {
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    g.setAttribute('role', 'button');
-    g.setAttribute('tabindex', '0');
-    g.setAttribute('aria-label', `Jump to ${p.stop.title}`);
-    g.style.cursor = 'pointer';
+    g.dataset.stopIndex = i;
 
+    // Visible circle
     const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    circle.setAttribute('cx', p.x);
-    circle.setAttribute('cy', p.y);
-    circle.setAttribute('r', p.stop.peak ? 10 : 7);
-    circle.className.baseVal = 'map-station-circle' +
-      (i < currentIndex ? ' visited' : '') +
-      (i === currentIndex ? ' current' : '');
+    circle.setAttribute('cx', x);
+    circle.setAttribute('cy', y);
+    circle.setAttribute('r', r);
+    circle.classList.add('station-circle');
+    if (isIntroOutro) circle.setAttribute('stroke-dasharray', '4 3');
 
-    // Peak gets a red ring
-    if (p.stop.peak) {
-      circle.setAttribute('stroke', '#CD0D0D');
-    }
-
+    // Label
     const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    label.setAttribute('x', p.x);
-    label.setAttribute('y', p.y - 14);
+    label.setAttribute('x', x);
+    label.setAttribute('y', y - r - 6);
     label.setAttribute('text-anchor', 'middle');
-    label.className.baseVal = 'map-station-label';
-    label.textContent = p.stop.title;
+    label.classList.add('station-label');
+    if (isIntroOutro) label.classList.add(stop.type === 'intro' ? 'intro-stop' : 'outro-stop');
+    label.textContent = stop.title;
+
+    // Hit target (larger invisible circle for easier clicking)
+    const hit = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    hit.setAttribute('cx', x);
+    hit.setAttribute('cy', y);
+    hit.setAttribute('r', 18);
+    hit.classList.add('station-hit');
+    hit.setAttribute('aria-label', `Jump to: ${stop.title}`);
+    hit.setAttribute('role', 'button');
+    hit.setAttribute('tabindex', '0');
+    hit.addEventListener('click', () => jumpToStop(i));
+    hit.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); jumpToStop(i); }
+    });
 
     g.appendChild(circle);
     g.appendChild(label);
-
-    const handler = () => jumpTo(i);
-    g.addEventListener('click', handler);
-    g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') handler(); });
-
-    svg.appendChild(g);
+    g.appendChild(hit);
+    stationsGrp.appendChild(g);
   });
 
-  mapCanvas.innerHTML = '';
-  mapCanvas.appendChild(svg);
+  refreshStationStyles();
 }
 
-// ── Navigation ────────────────────────────────────────────
-function goTo(index, direction) {
-  if (index < 0 || index >= STOPS.length) return;
+// ── Update station styles to reflect visited/current ─────
+function refreshStationStyles() {
+  stationsGrp.querySelectorAll('[data-stop-index]').forEach(g => {
+    const i      = parseInt(g.dataset.stopIndex);
+    const circle = g.querySelector('.station-circle');
+    const label  = g.querySelector('.station-label');
+    circle.classList.remove('visited', 'current');
+    label.classList.remove('current');
+    if (i < curIndex)  circle.classList.add('visited');
+    if (i === curIndex) { circle.classList.add('current'); label.classList.add('current'); }
+  });
+}
 
-  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+// ── Update lit path to show progress up to stop i ────────
+function updateProgress(index, animate) {
+  if (!pathTotalLen) return;
+  const litLen = stopPositions[index]?.len ?? 0;
+  if (!animate) {
+    pathLit.style.transition = 'none';
+    pathLit.style.strokeDashoffset = pathTotalLen - litLen;
+    // Re-enable transition after paint
+    requestAnimationFrame(() => {
+      pathLit.style.transition = '';
+    });
+  } else {
+    pathLit.style.strokeDashoffset = pathTotalLen - litLen;
+  }
+  refreshStationStyles();
+}
 
-  if (!prefersReduced && direction !== undefined) {
-    // Tunnel animation: brief flash of lit track
-    const fromPct = STOPS.length > 1 ? (currentIndex / (STOPS.length - 1)) * 100 : 0;
-    const toPct   = STOPS.length > 1 ? (index       / (STOPS.length - 1)) * 100 : 0;
-    // Brief overshoot on lit segment to simulate "lighting up"
-    trackLit.style.transition = 'x2 0.5s cubic-bezier(0.4, 0, 0.2, 1)';
+// ── Render stop panel for stop at index ──────────────────
+function renderPanel(index) {
+  const stop = STOPS[index];
+  const isIntroOutro = !!stop.type;
+
+  panelIntro.classList.toggle('hidden', !isIntroOutro);
+  panelRegular.classList.toggle('hidden', isIntroOutro);
+
+  if (isIntroOutro) {
+    // Cold open: show full wordmark; closer: just title text
+    if (stop.type === 'intro') {
+      introTitle.innerHTML = `<span class="wordmark" style="font-size:clamp(1.6rem,3vw,2.2rem)">Mind the <span class="gap">Gap</span></span>`;
+    } else {
+      introTitle.textContent = stop.title;
+    }
+    introBody.textContent = stop.body || '';
+  } else {
+    const color = themeHex(stop);
+    regTag.textContent  = stop.theme ? stop.theme.replace('_', ' ') : '';
+    regTag.style.background = color;
+    regTag.style.display = stop.theme ? '' : 'none';
+
+    const regCount = STOPS.filter(s => !s.type);
+    const myReg    = STOPS.slice(0, index).filter(s => !s.type).length + 1;
+    regNumber.textContent = `${myReg} / ${regCount.length}`;
+
+    regTitle.textContent    = stop.title;
+    pContext.textContent    = stop.context   || '';
+    pObj.textContent        = stop.objective || '';
+    pHow.textContent        = stop.how       || '';
+    pRlabel.textContent     = stop.resultLabel || 'Result';
+    pResult.textContent     = stop.result    || '';
   }
 
-  currentIndex = index;
-  renderStop(currentIndex);
+  btnPrev.disabled = index === 0;
+  btnNext.disabled = index === STOPS.length - 1;
+}
+
+// ── Pan map to show current stop (smooth) ────────────────
+function panToStop(index) {
+  if (!stopPositions[index]) return;
+  const { x, y } = stopPositions[index];
+  const W = transitSvg.clientWidth;
+  const H = transitSvg.clientHeight;
+  // Pan so stop is at 65% from left (leaving room for panel) and centered vertically
+  const targetX = W * 0.65;
+  const targetY = H * 0.5;
+  viewTx.x += targetX - (x * viewTx.scale + viewTx.x);
+  viewTx.y += targetY - (y * viewTx.scale + viewTx.y);
+  applyViewTransform(true);
+}
+
+// ── Pan/zoom ──────────────────────────────────────────────
+let viewTx = { x: 0, y: 0, scale: 1 };
+let isPanning = false;
+let panStart  = null;
+
+function applyViewTransform(animated) {
+  if (animated) {
+    panGroup.style.transition = 'transform 0.5s cubic-bezier(0.4,0,0.2,1)';
+    setTimeout(() => { panGroup.style.transition = ''; }, 520);
+  }
+  panGroup.setAttribute('transform',
+    `translate(${viewTx.x} ${viewTx.y}) scale(${viewTx.scale})`
+  );
+}
+
+function resetViewTransform(animated) {
+  viewTx = { x: 0, y: 0, scale: 1 };
+  applyViewTransform(animated);
+}
+
+transitSvg.addEventListener('mousedown', e => {
+  if (appState !== STATE.MAP) return;
+  if (e.target.closest('.station-hit')) return;
+  isPanning = true;
+  panStart  = { mx: e.clientX, my: e.clientY, tx: viewTx.x, ty: viewTx.y };
+  transitSvg.style.cursor = 'grabbing';
+});
+window.addEventListener('mousemove', e => {
+  if (!isPanning) return;
+  viewTx.x = panStart.tx + (e.clientX - panStart.mx);
+  viewTx.y = panStart.ty + (e.clientY - panStart.my);
+  applyViewTransform(false);
+});
+window.addEventListener('mouseup', () => {
+  isPanning = false;
+  transitSvg.style.cursor = '';
+});
+
+transitSvg.addEventListener('wheel', e => {
+  if (appState !== STATE.MAP) return;
+  e.preventDefault();
+  const factor    = e.deltaY < 0 ? 1.12 : 0.89;
+  const newScale  = Math.max(0.35, Math.min(5, viewTx.scale * factor));
+  const scaleRatio = newScale / viewTx.scale;
+  // Zoom toward cursor
+  const rect = transitSvg.getBoundingClientRect();
+  const cx   = e.clientX - rect.left;
+  const cy   = e.clientY - rect.top;
+  viewTx.x   = cx - scaleRatio * (cx - viewTx.x);
+  viewTx.y   = cy - scaleRatio * (cy - viewTx.y);
+  viewTx.scale = newScale;
+  applyViewTransform(false);
+}, { passive: false });
+
+// Touch pan (map state)
+let touchStart = null;
+transitSvg.addEventListener('touchstart', e => {
+  if (appState !== STATE.MAP || e.touches.length !== 1) return;
+  touchStart = { mx: e.touches[0].clientX, my: e.touches[0].clientY, tx: viewTx.x, ty: viewTx.y };
+}, { passive: true });
+transitSvg.addEventListener('touchmove', e => {
+  if (!touchStart || e.touches.length !== 1) return;
+  e.preventDefault();
+  viewTx.x = touchStart.tx + (e.touches[0].clientX - touchStart.mx);
+  viewTx.y = touchStart.ty + (e.touches[0].clientY - touchStart.my);
+  applyViewTransform(false);
+}, { passive: false });
+transitSvg.addEventListener('touchend', () => { touchStart = null; });
+
+// ── State transitions ─────────────────────────────────────
+function setState(s) {
+  appState = s;
+  document.body.dataset.state = s;
+}
+
+function goToMap() {
+  resetViewTransform(true);
+  setState(STATE.MAP);
+}
+
+function goToTitle() {
+  setState(STATE.TITLE);
+}
+
+function goToStop(index, animated) {
+  curIndex = Math.max(0, Math.min(STOPS.length - 1, index));
+  hasStarted = true;
+  document.body.dataset.started = 'true';
+  setState(STATE.STOP);
+  renderPanel(curIndex);
+  updateProgress(curIndex, animated !== false);
+  panToStop(curIndex);
+}
+
+function jumpToStop(index) {
+  goToStop(index, true);
 }
 
 function advance() {
-  if (currentIndex < STOPS.length - 1) goTo(currentIndex + 1, 1);
-}
-function retreat() {
-  if (currentIndex > 0) goTo(currentIndex - 1, -1);
-}
-function jumpTo(index) {
-  showStop();
-  goTo(index);
+  if (appState === STATE.MAP && !hasStarted) { goToTitle(); return; }
+  if (appState === STATE.TITLE) { goToStop(0, true); return; }
+  if (appState === STATE.STOP && curIndex < STOPS.length - 1) {
+    goToStop(curIndex + 1, true);
+  }
 }
 
-// ── View toggling ─────────────────────────────────────────
-function showStop() {
-  showingMap = false;
-  mapView.classList.add('hidden');
-  stopView.classList.remove('hidden');
-}
-function showMap() {
-  showingMap = true;
-  stopView.classList.add('hidden');
-  mapView.classList.remove('hidden');
-  buildMap();
-}
-function toggleMap() {
-  showingMap ? showStop() : showMap();
-}
-function toggleNotes() {
-  showingNotes = !showingNotes;
-  notesPanel.classList.toggle('hidden', !showingNotes);
-}
-function toggleFullscreen() {
-  if (!document.fullscreenElement) {
-    document.documentElement.requestFullscreen().catch(() => {});
-  } else {
-    document.exitFullscreen().catch(() => {});
+function retreat() {
+  if (appState === STATE.STOP && curIndex > 0) {
+    goToStop(curIndex - 1, true);
+  } else if (appState === STATE.TITLE) {
+    setState(STATE.MAP);
   }
 }
 
 // ── Keyboard ──────────────────────────────────────────────
 document.addEventListener('keydown', e => {
-  // Don't fire on form elements
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-
   switch (e.key) {
     case 'ArrowRight':
     case 'ArrowDown':
     case ' ':
       e.preventDefault();
-      if (!showingMap) advance();
+      advance();
       break;
     case 'ArrowLeft':
     case 'ArrowUp':
       e.preventDefault();
-      if (!showingMap) retreat();
+      retreat();
       break;
     case 'Escape':
     case 'm':
     case 'M':
-      toggleMap();
-      break;
-    case 'n':
-    case 'N':
-      if (!showingMap) toggleNotes();
+      if (appState === STATE.STOP || appState === STATE.TITLE) goToMap();
       break;
     case 'f':
     case 'F':
-      toggleFullscreen();
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
       break;
   }
 });
 
-// ── Click anywhere to advance (stop view only) ────────────
-stopView.addEventListener('click', e => {
-  // Don't intercept nav button or dot clicks
-  if (e.target.closest('#stop-nav')) return;
-  advance();
-});
+// ── Clicking the title screen advances ───────────────────
+titleScreen.addEventListener('click', () => advance());
 
-btnBack.addEventListener('click', e => {
-  e.stopPropagation();
-  retreat();
-});
-btnForward.addEventListener('click', e => {
-  e.stopPropagation();
-  advance();
-});
+// ── Button handlers ───────────────────────────────────────
+btnBegin.addEventListener('click',    () => advance());
+btnReturn.addEventListener('click',   () => goToStop(curIndex, false));
+btnOverview.addEventListener('click', () => goToMap());
+btnPrev.addEventListener('click',     () => retreat());
+btnNext.addEventListener('click',     () => advance());
 
-// ── Build station markers on track SVG ───────────────────
-function buildTrackStations() {
-  trackStations.innerHTML = '';
-  const total = STOPS.length;
-  STOPS.forEach((stop, i) => {
-    const pct = total > 1 ? (i / (total - 1)) * 100 : 50;
-    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    circle.setAttribute('cx', pct + '%');
-    circle.setAttribute('cy', '50%');
-    circle.setAttribute('r', stop.type ? '6' : '5');
-    circle.setAttribute('stroke-width', '2.5');
-    if (stop.peak) circle.setAttribute('stroke', '#CD0D0D');
-    trackStations.appendChild(circle);
-  });
-}
+// ── Resize ────────────────────────────────────────────────
+let resizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { initMap(); }, 120);
+});
 
 // ── Init ─────────────────────────────────────────────────
-function init() {
-  buildTrackStations();
-  renderStop(0);
-  showStop();
-}
-
-init();
+window.addEventListener('DOMContentLoaded', () => {
+  initMap();
+  setState(STATE.MAP);
+});
