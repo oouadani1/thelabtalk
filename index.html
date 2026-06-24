@@ -11,31 +11,25 @@
   <!-- ── Map layer — always rendered ── -->
   <div id="map-layer">
     <svg id="transit-svg" aria-label="Fellowship Line transit map" xmlns="http://www.w3.org/2000/svg">
-      <defs id="svg-defs">
-        <!-- Branch-line gradients injected by JS -->
-      </defs>
+      <defs id="svg-defs"></defs>
       <g id="pan-group">
-        <!-- Branch lines injected by JS (behind tracks) -->
+        <!-- Branch fading tails injected by JS -->
         <path id="path-dim" class="track track-dim" />
         <path id="path-lit" class="track track-lit" />
+        <g id="ghost-lines-group"></g>
         <g id="stations-group"></g>
       </g>
     </svg>
   </div>
 
-  <!-- ── Title / intro screen ── -->
+  <!-- ── Title screen ── -->
   <div id="title-screen" aria-hidden="true">
-    <!-- Illustration -->
     <img id="ouss-img" src="images/ouss.png" alt="" aria-hidden="true" />
-
-    <!-- Title content -->
     <div class="title-inner">
       <div class="title-tag">Fellowship Line · Spring 2026</div>
       <h1 class="wordmark">Mind the <span class="gap">Gap</span></h1>
       <p class="title-sub">Oussama Ouadani &nbsp;·&nbsp; The Lab @ MassDOT</p>
     </div>
-
-    <!-- Decorative transit lines -->
     <svg class="title-deco-lines" aria-hidden="true">
       <line class="deco-fellowship" x1="-5%" y1="72%" x2="105%" y2="72%" />
       <circle class="deco-station fellowship" cx="18%" cy="72%" r="8" />
@@ -53,33 +47,36 @@
     <div class="finale-inner">
       <h2 class="finale-heading">Thank you.</h2>
       <p  class="finale-body" id="finale-body-text"></p>
-      <p  class="finale-meta">Spring 2026 · The Lab @ MassDOT</p>
+      <!-- Departure-board acknowledgments — populated from ACKNOWLEDGMENTS in content.js -->
+      <div id="ack-board">
+        <div class="ack-header">With gratitude to</div>
+        <div id="ack-grid-board"></div>
+      </div>
+      <p class="finale-meta">Spring 2026 · The Lab @ MassDOT</p>
     </div>
     <svg class="title-deco-lines" aria-hidden="true">
-      <line class="deco-fellowship" x1="-5%" y1="72%" x2="105%" y2="72%" />
-      <circle class="deco-station fellowship" cx="18%" cy="72%" r="8" />
-      <circle class="deco-station fellowship" cx="45%" cy="72%" r="8" />
-      <circle class="deco-station fellowship" cx="72%" cy="72%" r="8" />
+      <line class="deco-fellowship" x1="-5%" y1="88%" x2="105%" y2="88%" />
+      <circle class="deco-station fellowship" cx="18%" cy="88%" r="6" />
+      <circle class="deco-station fellowship" cx="45%" cy="88%" r="6" />
+      <circle class="deco-station fellowship" cx="72%" cy="88%" r="6" />
     </svg>
   </div>
 
-  <!-- ── Stop panel (left side card) ── -->
+  <!-- ── Stop panel ── -->
   <aside id="stop-panel" aria-live="polite">
     <div id="panel-scroll">
 
-      <!-- Intro / outro body -->
       <div id="panel-intro" class="hidden">
         <div class="panel-tag-row">
           <span class="panel-line-tag">Fellowship Line</span>
         </div>
         <h2 id="intro-title" class="panel-title"></h2>
-        <p  id="intro-body"  class="intro-body"></p>
         <div id="intro-img-wrap" class="panel-img-wrap hidden">
           <img id="intro-img" src="" alt="" />
         </div>
+        <p id="intro-body" class="intro-body"></p>
       </div>
 
-      <!-- Regular stop -->
       <div id="panel-regular" class="hidden">
         <div class="panel-tag-row">
           <span id="reg-tag"    class="panel-theme-tag"></span>
@@ -90,26 +87,25 @@
           <img id="reg-img" src="" alt="" />
         </div>
         <dl id="panel-grid">
-          <dt>Context</dt>   <dd id="p-context"></dd>
-          <dt>Objective</dt> <dd id="p-obj"></dd>
-          <dt>How</dt>       <dd id="p-how"></dd>
-          <dt id="p-rlabel">Result</dt>
-          <dd id="p-result"></dd>
+          <dt>Gap</dt>      <dd id="p-gap"></dd>
+          <dt>Action</dt>   <dd id="p-action"></dd>
+          <dt>Learning</dt> <dd id="p-learning"></dd>
         </dl>
+        <a id="p-link" class="panel-link hidden" target="_blank" rel="noopener noreferrer"></a>
       </div>
 
     </div><!-- /panel-scroll -->
   </aside>
 
-  <!-- ── Minimal bottom navigation (keyboard-first; these are fallbacks) ── -->
-  <div id="bottom-nav" aria-label="Navigation">
+  <!-- ── Bottom navigation (minimal, keyboard-first) ── -->
+  <div id="bottom-nav">
     <button id="btn-prev" aria-label="Previous">←</button>
     <button id="btn-map"  aria-label="Map overview" title="M — full map">map</button>
     <button id="btn-next" aria-label="Next">→</button>
   </div>
 
-  <!-- ── Map return button (shown in map state) ── -->
-  <button id="btn-return" aria-label="Return to stop" class="hidden">+ return to stop</button>
+  <!-- ── Map-state return button ── -->
+  <button id="btn-return" aria-label="Return to stop">+ return to stop</button>
 
   <script src="content.js"></script>
   <script src="app.js"></script>

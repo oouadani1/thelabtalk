@@ -1,15 +1,13 @@
 # Mind the Gap — Fellowship Lightning Talk
 
-A static web app presenting Oussama Ouadani's Innovation Fellowship at The Lab @ MassDOT as a transit map. Built for a 10-minute lightning talk to internal MassDOT staff, Spring 2026.
+A simple web app encapsualting my time and projects as Innovation Fellowship at The Lab @ MassDOT as a transit map. Built for a 10-minute lightning talk to internal MassDOT staff, June 24 2026. Feel free to use this architecture for your own projects. 
 
-## Run it
+## Run locally
 
 ```bash
 python3 -m http.server 8765
 # then open http://localhost:8765
 ```
-
-No build step. No dependencies. Just open the file.
 
 ## Keyboard controls
 
@@ -18,7 +16,6 @@ No build step. No dependencies. Just open the file.
 | `→` `↓` `Space` | Advance to next stop |
 | `←` `↑` | Back to previous stop |
 | `M` or `Esc` | Toggle map view |
-| `N` | Toggle presenter notes (off by default — keep off during the talk) |
 | `F` | Fullscreen |
 
 Click anywhere in stop view to advance. In map view, click any station to jump to it.
@@ -57,11 +54,5 @@ app.js          all interactivity
 content.js      ALL CONTENT — edit here
 fonts/          self-hosted Poppins + IBM Plex Sans (works offline)
 images/         project photos (add your own)
-reference/      deck screenshots + essays (voice reference)
+reference/      deck screenshots + essays (tone of voice reference)
 ```
-
-## Open TODOs (visible on screen)
-
-1. Stop 6: number of posts/animations in the campaign
-2. Stop 12: actual scope of the public engagement research
-3. Confirm the peak stop (currently stop 9 — Explore Micromobility)
