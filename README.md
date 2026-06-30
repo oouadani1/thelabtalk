@@ -1,6 +1,8 @@
 # Mind the Gap — Fellowship Lightning Talk
 
-A simple web app encapsualting my time and projects as Innovation Fellowship at The Lab @ MassDOT as a transit map. I built this for a 10-minute lightning talk to internal MassDOT teammates, on June 24 2026. Feel free to use this architecture for your own projects. Check it out here: https://oouadani1.github.io/thelabtalk/
+A simple web app encapsualting my time and projects as Innovation Fellowship at The Lab @ MassDOT as a transit map. I built this for a 10-minute lightning talk to internal MassDOT teammates, on June 24 2026. Feel free to use this architecture for your own projects. 
+
+**Check it out here: https://oouadani1.github.io/thelabtalk/**
 
 ## Run locally
 
